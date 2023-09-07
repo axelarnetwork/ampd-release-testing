@@ -6,9 +6,12 @@ use std::process::ExitCode;
 use ::config::{Config as cfg, Environment, File, FileFormat, FileSourceFile};
 use clap::{command, Parser, Subcommand, ValueEnum};
 use config::ConfigError;
+use cosmrs::{AccountId, Coin};
 use error_stack::Report;
 use tracing::{error, info};
 
+use ampd::cli;
+use ampd::cli::{BondWorkerArgs, DeclareChainSupportArgs};
 use ampd::config::Config;
 use ampd::report::LoggableError;
 use ampd::run;
@@ -43,8 +46,10 @@ enum Output {
 enum SubCommand {
     /// Run the ampd daemon process (default)
     Daemon,
-    /// Register this node as a worker
-    RegisterWorker,
+    /// Bond worker to a service
+    BondWorker(BondWorkerArgs),
+    /// Declare chain support for a service
+    DeclareChainSupport(DeclareChainSupportArgs),
 }
 
 #[tokio::main]
@@ -52,9 +57,12 @@ async fn main() -> ExitCode {
     let args: Args = Args::parse();
     set_up_logger(&args.output);
 
-    match args.cmd {
-        Some(SubCommand::RegisterWorker) => register_worker(args),
+    match &args.cmd {
+        Some(SubCommand::BondWorker(cmd_args)) => bond_worker(&args, cmd_args).await,
         Some(SubCommand::Daemon) | None => run_daemon(args).await,
+        Some(SubCommand::DeclareChainSupport(cmd_args)) => {
+            declare_chain_support(&args, cmd_args).await
+        }
     }
 }
 
@@ -77,9 +85,40 @@ async fn run_daemon(args: Args) -> ExitCode {
     code
 }
 
-fn register_worker(args: Args) -> ExitCode {
-    println!("registering worker");
-    println!("args: {:?}", args);
+async fn bond_worker(args: &Args, params: &BondWorkerArgs) -> ExitCode {
+    info!("registering worker");
+
+    let cfg = init_config(args);
+    let coin = Coin::new(params.amount, params.denom.as_str()).unwrap();
+    let service_registry = params.service_registry.parse::<AccountId>().unwrap();
+
+    cli::bond_worker(
+        cfg,
+        args.state.clone(),
+        service_registry,
+        params.service_name.clone(),
+        coin,
+    )
+    .await;
+
+    ExitCode::SUCCESS
+}
+
+async fn declare_chain_support(args: &Args, params: &DeclareChainSupportArgs) -> ExitCode {
+    info!("declaring chain support");
+
+    let cfg = init_config(args);
+    let service_registry = params.service_registry.parse::<AccountId>().unwrap();
+
+    cli::declare_chain_support(
+        cfg,
+        args.state.clone(),
+        service_registry,
+        params.service_name.clone(),
+        params.chains.clone(),
+    )
+    .await;
+
     ExitCode::SUCCESS
 }
 

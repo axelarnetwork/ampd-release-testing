@@ -22,6 +22,7 @@ use tofnd::grpc::{MultisigClient, SharableEcdsaClient};
 use types::TMAddress;
 
 mod broadcaster;
+pub mod cli;
 pub mod config;
 mod event_processor;
 mod event_sub;
