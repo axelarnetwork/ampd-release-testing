@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::path::PathBuf;
 
 use clap::Args;
@@ -9,11 +10,13 @@ use cosmrs::tx::Msg;
 use cosmrs::{AccountId, Coin};
 use error_stack::ResultExt;
 
+use multisig::{key::{KeyType, PublicKey as MultisigPublicKey}, msg::ExecuteMsg as MultisigExecuteMsg};
 use service_registry::msg::ExecuteMsg;
 
 use crate::broadcaster;
 use crate::broadcaster::{accounts::account, Broadcaster, Config as BroadcastConfig};
 use crate::config::Config;
+use crate::handlers;
 use crate::report::Error;
 use crate::state::StateUpdater;
 use crate::tofnd::grpc::{MultisigClient, SharableEcdsaClient};
@@ -21,6 +24,8 @@ use crate::types::PublicKey;
 use crate::url::Url;
 
 type Result<T> = error_stack::Result<T, Error>;
+
+const PREFIX: &str = "axelar";
 
 #[derive(Args, Debug)]
 pub struct BondWorkerArgs {
@@ -71,7 +76,7 @@ pub async fn bond_worker(
 
     let tx = MsgExecuteContract {
         sender: pub_key
-            .account_id("axelar")
+            .account_id(PREFIX)
             .expect("failed to convert to account identifier"),
         contract: service_registry,
         msg,
@@ -126,9 +131,78 @@ pub async fn declare_chain_support(
 
     let tx = MsgExecuteContract {
         sender: pub_key
-            .account_id("axelar")
+            .account_id(PREFIX)
             .expect("failed to convert to account identifier"),
         contract: service_registry,
+        msg,
+        funds: vec![],
+    };
+
+    broadcast_execute_contract(
+        tm_grpc,
+        broadcast,
+        tofnd_config.key_uid,
+        tx,
+        pub_key,
+        ecdsa_client,
+    )
+    .await
+}
+
+pub async fn register_public_key(config: Config, state_path: PathBuf) {
+    let Config {
+        tm_grpc,
+        broadcast,
+        tofnd_config,
+        handlers,
+        ..
+    } = config;
+
+    let multisig_client = MultisigClient::connect(tofnd_config.party_uid, tofnd_config.url)
+        .await
+        .map_err(Error::new)
+        .unwrap();
+
+    let ecdsa_client = SharableEcdsaClient::new(multisig_client);
+
+    let pub_key = pub_key(
+        state_path,
+        tofnd_config.key_uid.as_str(),
+        ecdsa_client.clone(),
+    )
+    .await
+    .unwrap();
+
+    // get multisig contract address
+    let multisig_address = handlers
+        .iter()
+        .filter_map(|h| {
+            if let handlers::config::Config::MultisigSigner { cosmwasm_contract } = h {
+                Some(cosmwasm_contract.clone())
+            } else {
+                None
+            }
+        })
+        .next()
+        .expect("No multisig signer found in handlers");
+
+    // get tofnd pub key
+    let multisig_pub_key = ecdsa_client
+        .keygen(multisig_address.to_string().as_str())
+        .await
+        .unwrap();
+    let multisig_pub_key =
+        MultisigPublicKey::try_from((KeyType::Ecdsa, multisig_pub_key.to_bytes().into())).unwrap();
+    let msg = serde_json::to_vec(&MultisigExecuteMsg::RegisterPublicKey {
+        public_key: multisig_pub_key,
+    })
+    .expect("bond worker msg should serialize");
+
+    let tx = MsgExecuteContract {
+        sender: pub_key
+            .account_id(PREFIX)
+            .expect("failed to convert to account identifier"),
+        contract: multisig_address.to_string().as_str().parse().unwrap(),
         msg,
         funds: vec![],
     };
@@ -179,7 +253,7 @@ async fn broadcast_execute_contract(
         .unwrap();
 
     let worker = pub_key
-        .account_id("axelar")
+        .account_id(PREFIX)
         .expect("failed to convert to account identifier")
         .into();
     let account = account(query_client, &worker)
@@ -203,6 +277,5 @@ async fn broadcast_execute_contract(
         .change_context(Error::Broadcaster)
         .unwrap();
 
-    let _ = broadcaster.broadcast(vec![tx.into_any().unwrap()]).await;
-    // .change_context(Error::Broadcaster)?
+     broadcaster.broadcast(vec![tx.into_any().unwrap()]).await.unwrap();
 }

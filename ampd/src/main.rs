@@ -50,6 +50,8 @@ enum SubCommand {
     BondWorker(BondWorkerArgs),
     /// Declare chain support for a service
     DeclareChainSupport(DeclareChainSupportArgs),
+    /// Register worker public key to the multisig signer
+    RegisterPublicKey,
 }
 
 #[tokio::main]
@@ -63,6 +65,7 @@ async fn main() -> ExitCode {
         Some(SubCommand::DeclareChainSupport(cmd_args)) => {
             declare_chain_support(&args, cmd_args).await
         }
+        Some(SubCommand::RegisterPublicKey) => register_public_key(&args).await,
     }
 }
 
@@ -118,6 +121,15 @@ async fn declare_chain_support(args: &Args, params: &DeclareChainSupportArgs) ->
         params.chains.clone(),
     )
     .await;
+
+    ExitCode::SUCCESS
+}
+
+async fn register_public_key(args: &Args) -> ExitCode {
+    info!("registering public key to multisig signer contract");
+
+    let cfg = init_config(args);
+    cli::register_public_key(cfg, args.state.clone()).await;
 
     ExitCode::SUCCESS
 }
