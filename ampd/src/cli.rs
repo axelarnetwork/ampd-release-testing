@@ -10,7 +10,10 @@ use cosmrs::tx::Msg;
 use cosmrs::{AccountId, Coin};
 use error_stack::ResultExt;
 
-use multisig::{key::{KeyType, PublicKey as MultisigPublicKey}, msg::ExecuteMsg as MultisigExecuteMsg};
+use multisig::{
+    key::{KeyType, PublicKey as MultisigPublicKey},
+    msg::ExecuteMsg as MultisigExecuteMsg,
+};
 use service_registry::msg::ExecuteMsg;
 
 use crate::broadcaster;
@@ -218,6 +221,36 @@ pub async fn register_public_key(config: Config, state_path: PathBuf) {
     .await
 }
 
+pub async fn worker_address(config: Config, state_path: PathBuf) {
+    let Config {
+        tofnd_config,
+        ..
+    } = config;
+
+    let multisig_client = MultisigClient::connect(tofnd_config.party_uid, tofnd_config.url)
+        .await
+        .change_context(Error::Connection)
+        .unwrap();
+
+    let ecdsa_client = SharableEcdsaClient::new(multisig_client);
+
+    let pub_key = pub_key(
+        state_path,
+        tofnd_config.key_uid.as_str(),
+        ecdsa_client.clone(),
+    )
+    .await
+    .unwrap();
+
+    println!(
+        "Worker address is {}",
+        pub_key
+            .account_id(PREFIX)
+            .expect("failed to convert to account identifier")
+            .to_string()
+    )
+}
+
 async fn pub_key(
     state_path: PathBuf,
     key_uid: &str,
@@ -277,5 +310,8 @@ async fn broadcast_execute_contract(
         .change_context(Error::Broadcaster)
         .unwrap();
 
-     broadcaster.broadcast(vec![tx.into_any().unwrap()]).await.unwrap();
+    broadcaster
+        .broadcast(vec![tx.into_any().unwrap()])
+        .await
+        .unwrap();
 }

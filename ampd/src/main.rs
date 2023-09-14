@@ -55,6 +55,7 @@ enum SubCommand {
     DeclareChainSupport(DeclareChainSupportArgs),
     /// Register worker public key to the multisig signer
     RegisterPublicKey,
+    WorkerAddress,
 }
 
 #[tokio::main]
@@ -63,7 +64,6 @@ async fn main() -> ExitCode {
     set_up_logger(&args.output);
 
     match &args.cmd {
-        Some(SubCommand::BondWorker(cmd_args)) => bond_worker(&args, cmd_args).await,
         Some(SubCommand::Daemon) | None =>{
             let result = run_daemon(&args)
                 .await
@@ -82,10 +82,12 @@ async fn main() -> ExitCode {
             }
 
         },
+        Some(SubCommand::BondWorker(cmd_args)) => bond_worker(&args, cmd_args).await,
         Some(SubCommand::DeclareChainSupport(cmd_args)) => {
             declare_chain_support(&args, cmd_args).await
         }
         Some(SubCommand::RegisterPublicKey) => register_public_key(&args).await,
+        Some(SubCommand::WorkerAddress) => worker_address(&args).await,
     }
 }
 
@@ -134,6 +136,16 @@ async fn register_public_key(args: &Args) -> ExitCode {
 
     ExitCode::SUCCESS
 }
+
+async fn worker_address(args: &Args) -> ExitCode {
+    info!("querying worker address");
+
+    let cfg = init_config(&args.config);
+    cli::worker_address(cfg, args.state.clone()).await;
+
+    ExitCode::SUCCESS
+}
+
 
 fn set_up_logger(output: &Output) {
     match output {
