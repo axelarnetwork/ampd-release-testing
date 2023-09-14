@@ -18,7 +18,6 @@ use ampd::report::Error;
 use ampd::report::LoggableError;
 use ampd::run;
 use axelar_wasm_std::utils::InspectorResult;
-use axelar_wasm_std::FnExt;
 
 #[derive(Debug, Parser)]
 #[command(version)]
