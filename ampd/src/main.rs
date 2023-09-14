@@ -1,21 +1,24 @@
 use std::fmt::Debug;
 use std::fs::canonicalize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use ::config::{Config as cfg, Environment, File, FileFormat, FileSourceFile};
 use clap::{command, Parser, Subcommand, ValueEnum};
 use config::ConfigError;
 use cosmrs::{AccountId, Coin};
-use error_stack::Report;
+use error_stack::{Report, ResultExt};
 use tracing::{error, info};
+use valuable::Valuable;
 
 use ampd::cli;
 use ampd::cli::{BondWorkerArgs, DeclareChainSupportArgs};
 use ampd::config::Config;
+use ampd::report::Error;
 use ampd::report::LoggableError;
 use ampd::run;
-use valuable::Valuable;
+use axelar_wasm_std::utils::InspectorResult;
+use axelar_wasm_std::FnExt;
 
 #[derive(Debug, Parser)]
 #[command(version)]
@@ -36,7 +39,7 @@ struct Args {
     pub cmd: Option<SubCommand>,
 }
 
-#[derive(Debug, Clone, Parser, ValueEnum)]
+#[derive(Debug, Clone, Parser, ValueEnum, Valuable)]
 enum Output {
     Text,
     Json,
@@ -61,7 +64,24 @@ async fn main() -> ExitCode {
 
     match &args.cmd {
         Some(SubCommand::BondWorker(cmd_args)) => bond_worker(&args, cmd_args).await,
-        Some(SubCommand::Daemon) | None => run_daemon(args).await,
+        Some(SubCommand::Daemon) | None =>{
+            let result = run_daemon(&args)
+                .await
+                .tap_err(|report| error!(err = LoggableError::from(report).as_value(), "{report}"));
+            info!("shutting down");
+            match result {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(report) => {
+                    // print detailed error report as the last output if in text mode
+                    if matches!(args.output, Output::Text) {
+                        eprintln!("{report:?}");
+                    }
+
+                    ExitCode::FAILURE
+                }
+            }
+
+        },
         Some(SubCommand::DeclareChainSupport(cmd_args)) => {
             declare_chain_support(&args, cmd_args).await
         }
@@ -69,29 +89,10 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run_daemon(args: Args) -> ExitCode {
-    info!("starting daemon");
-
-    let cfg = init_config(&args);
-    let code = match run(cfg, args.state).await {
-        Ok(_) => ExitCode::SUCCESS,
-        Err(report) => {
-            let err = LoggableError::from(&report);
-            error!(err = err.as_value(), "{report}");
-            if matches!(args.output, Output::Text) {
-                eprintln!("{report:?}");
-            }
-            ExitCode::FAILURE
-        }
-    };
-    info!("shutting down");
-    code
-}
-
 async fn bond_worker(args: &Args, params: &BondWorkerArgs) -> ExitCode {
     info!("registering worker");
 
-    let cfg = init_config(args);
+    let cfg = init_config(&args.config);
     let coin = Coin::new(params.amount, params.denom.as_str()).unwrap();
     let service_registry = params.service_registry.parse::<AccountId>().unwrap();
 
@@ -110,7 +111,7 @@ async fn bond_worker(args: &Args, params: &BondWorkerArgs) -> ExitCode {
 async fn declare_chain_support(args: &Args, params: &DeclareChainSupportArgs) -> ExitCode {
     info!("declaring chain support");
 
-    let cfg = init_config(args);
+    let cfg = init_config(&args.config);
     let service_registry = params.service_registry.parse::<AccountId>().unwrap();
 
     cli::declare_chain_support(
@@ -128,27 +129,10 @@ async fn declare_chain_support(args: &Args, params: &DeclareChainSupportArgs) ->
 async fn register_public_key(args: &Args) -> ExitCode {
     info!("registering public key to multisig signer contract");
 
-    let cfg = init_config(args);
+    let cfg = init_config(&args.config);
     cli::register_public_key(cfg, args.state.clone()).await;
 
     ExitCode::SUCCESS
-}
-
-fn init_config(args: &Args) -> Config {
-    let files = find_config_files(&args.config);
-    info!("found {} config files to load", files.len());
-
-    match parse_config(files).map_err(Report::from) {
-        Ok(cfg) => cfg,
-        Err(report) => {
-            let err = LoggableError::from(&report);
-            error!(
-                err = err.as_value(),
-                "failed to load config, falling back to default"
-            );
-            Config::default()
-        }
-    }
 }
 
 fn set_up_logger(output: &Output) {
@@ -162,19 +146,61 @@ fn set_up_logger(output: &Output) {
     };
 }
 
-fn find_config_files(config: &[PathBuf]) -> Vec<File<FileSourceFile, FileFormat>> {
-    config
-        .iter()
-        .map(canonicalize)
-        .filter_map(Result::ok)
-        .map(File::from)
-        .collect()
+async fn run_daemon(args: &Args) -> Result<(), Report<Error>> {
+    let cfg = init_config(&args.config);
+    let state_path = check_state_path(args.state.as_path())?;
+
+    run(cfg, state_path).await
 }
 
-fn parse_config(files: Vec<File<FileSourceFile, FileFormat>>) -> Result<Config, ConfigError> {
+fn init_config(config_paths: &[PathBuf]) -> Config {
+    let files = find_config_files(config_paths);
+
+    parse_config(files)
+        .change_context(Error::LoadConfig)
+        .tap_err(|report| error!(err = LoggableError::from(report).as_value(), "{report}"))
+        .unwrap_or(Config::default())
+}
+
+fn find_config_files(config: &[PathBuf]) -> Vec<File<FileSourceFile, FileFormat>> {
+    let files = config
+        .iter()
+        .map(PathBuf::as_path)
+        .map(expand_home_dir)
+        .map(canonicalize)
+        .filter_map(Result::ok)
+        .inspect(|path| info!("found config file {}", path.to_string_lossy()))
+        .map(File::from)
+        .collect::<Vec<_>>();
+
+    if files.is_empty() {
+        info!("found no config files to load");
+    }
+
+    files
+}
+
+fn parse_config(
+    files: Vec<File<FileSourceFile, FileFormat>>,
+) -> error_stack::Result<Config, ConfigError> {
     cfg::builder()
         .add_source(files)
         .add_source(Environment::with_prefix(clap::crate_name!()))
         .build()?
         .try_deserialize::<Config>()
+        .map_err(Report::from)
+}
+
+fn check_state_path(path: &Path) -> error_stack::Result<PathBuf, Error> {
+    expand_home_dir(path)
+        .then(canonicalize)
+        .change_context(Error::StateLocation(path.to_string_lossy().into_owned()))
+}
+
+fn expand_home_dir(path: &Path) -> PathBuf {
+    let Ok(home_subfolder) = path.strip_prefix("~") else{
+        return path.to_path_buf()
+    };
+
+    dirs::home_dir().map_or(path.to_path_buf(), |home| home.join(home_subfolder))
 }

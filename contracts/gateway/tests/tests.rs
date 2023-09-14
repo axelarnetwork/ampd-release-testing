@@ -143,7 +143,7 @@ fn verify_multiple_messages() {
         &ExecuteMsg::VerifyMessages(convert_messages(&msgs.clone())),
         &[],
     );
-    println!("{:?}", res);
+
     assert!(res.is_ok());
     let mut ret: Vec<(String, bool)> = is_verified(
         &mut app,
@@ -908,10 +908,7 @@ fn duplicate_message_id() {
             &[],
         )
         .unwrap_err();
-    assert_eq!(
-        ContractError::DuplicateMessageID {},
-        err.downcast().unwrap()
-    );
+    assert_eq!(ContractError::DuplicateMessageID, err.downcast().unwrap());
 
     let err = app
         .execute_contract(
@@ -921,10 +918,7 @@ fn duplicate_message_id() {
             &[],
         )
         .unwrap_err();
-    assert_eq!(
-        ContractError::DuplicateMessageID {},
-        err.downcast().unwrap()
-    );
+    assert_eq!(ContractError::DuplicateMessageID, err.downcast().unwrap());
 
     //verify one of them
     mark_messages_as_verified(&mut app, verifier_address.clone(), msgs[0..1].to_vec());

@@ -58,7 +58,7 @@ pub async fn bond_worker(
 
     let multisig_client = MultisigClient::connect(tofnd_config.party_uid, tofnd_config.url)
         .await
-        .map_err(Error::new)
+        .change_context(Error::Connection)
         .unwrap();
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
@@ -110,7 +110,7 @@ pub async fn declare_chain_support(
 
     let multisig_client = MultisigClient::connect(tofnd_config.party_uid, tofnd_config.url)
         .await
-        .map_err(Error::new)
+        .change_context(Error::Connection)
         .unwrap();
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
@@ -160,7 +160,7 @@ pub async fn register_public_key(config: Config, state_path: PathBuf) {
 
     let multisig_client = MultisigClient::connect(tofnd_config.party_uid, tofnd_config.url)
         .await
-        .map_err(Error::new)
+        .change_context(Error::Connection)
         .unwrap();
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
@@ -223,7 +223,7 @@ async fn pub_key(
     key_uid: &str,
     ecdsa_client: SharableEcdsaClient,
 ) -> Result<PublicKey> {
-    let mut state_updater = StateUpdater::new(state_path).map_err(Error::new)?;
+    let mut state_updater = StateUpdater::new(state_path).change_context(Error::StateUpdater)?;
 
     match state_updater.state().pub_key {
         Some(pub_key) => Ok(pub_key),
@@ -249,7 +249,7 @@ async fn broadcast_execute_contract(
 ) {
     let query_client = QueryClient::connect(tm_grpc.to_string())
         .await
-        .map_err(Error::new)
+        .change_context(Error::Connection)
         .unwrap();
 
     let worker = pub_key
@@ -258,12 +258,12 @@ async fn broadcast_execute_contract(
         .into();
     let account = account(query_client, &worker)
         .await
-        .map_err(Error::new)
+        .change_context(Error::Broadcaster)
         .unwrap();
 
     let service_client = ServiceClient::connect(tm_grpc.to_string())
         .await
-        .map_err(Error::new)
+        .change_context(Error::Connection)
         .unwrap();
 
     let mut broadcaster = broadcaster::BroadcastClientBuilder::default()
