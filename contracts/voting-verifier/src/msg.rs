@@ -1,22 +1,20 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 
 use axelar_wasm_std::{
+    nonempty,
     operators::Operators,
     voting::{PollID, PollResult},
     Threshold,
 };
-use connection_router::{
-    msg::Message,
-    types::{ChainName, MessageID},
-};
+use connection_router::state::{ChainName, CrossChainId, Message};
 
 #[cw_serde]
 pub struct InstantiateMsg {
     // params to query register service
-    pub service_registry_address: String,
-    pub service_name: String,
+    pub service_registry_address: nonempty::String,
+    pub service_name: nonempty::String,
 
-    pub source_gateway_address: String,
+    pub source_gateway_address: nonempty::String,
     pub voting_threshold: Threshold,
     pub block_expiry: u64,
     pub confirmation_height: u64,
@@ -45,7 +43,7 @@ pub enum ExecuteMsg {
 
     // Starts a poll to confirm a worker set update on the external evm gateway
     ConfirmWorkerSet {
-        message_id: MessageID,
+        message_id: nonempty::String,
         new_operators: Operators,
     },
 }
@@ -62,7 +60,7 @@ pub enum QueryMsg {
     #[returns(Poll)]
     GetPoll { poll_id: PollID },
 
-    #[returns(Vec<(String, bool)>)]
+    #[returns(Vec<(CrossChainId, bool)>)]
     IsVerified { messages: Vec<Message> },
 
     #[returns(bool)]
@@ -71,7 +69,7 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct VerifyMessagesResponse {
-    pub verification_statuses: Vec<(String, bool)>,
+    pub verification_statuses: Vec<(CrossChainId, bool)>,
 }
 
 #[cw_serde]

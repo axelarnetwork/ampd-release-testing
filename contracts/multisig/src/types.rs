@@ -5,7 +5,8 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{from_binary, Addr, HexBinary, StdResult};
 use cw_storage_plus::{KeyDeserialize, PrimaryKey};
 
-use crate::{key::PublicKey, ContractError};
+use crate::key::PublicKey;
+use crate::ContractError;
 
 #[cw_serde]
 pub struct MsgToSign(HexBinary);
@@ -16,9 +17,9 @@ impl From<MsgToSign> for HexBinary {
     }
 }
 
-impl<'a> From<&'a MsgToSign> for &'a [u8] {
-    fn from(original: &'a MsgToSign) -> Self {
-        original.0.as_slice()
+impl AsRef<[u8]> for MsgToSign {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_slice()
     }
 }
 
@@ -71,7 +72,9 @@ pub struct Key {
 #[cw_serde]
 pub enum MultisigState {
     Pending,
-    Completed,
+    Completed {
+        completed_at: u64, // block at which the session was completed
+    },
 }
 
 const MESSAGE_HASH_LEN: usize = 32;
@@ -94,7 +97,7 @@ impl TryFrom<HexBinary> for MsgToSign {
 mod tests {
     use cosmwasm_std::to_binary;
 
-    use crate::test::common::test_data;
+    use crate::test::common::ecdsa_test_data;
 
     use super::*;
 
@@ -112,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_try_from_hexbinary_to_message() {
-        let hex = test_data::message();
+        let hex = ecdsa_test_data::message();
         let message = MsgToSign::try_from(hex.clone()).unwrap();
         assert_eq!(HexBinary::from(message), hex);
     }

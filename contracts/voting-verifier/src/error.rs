@@ -1,12 +1,12 @@
+use axelar_wasm_std::{nonempty, voting};
+use axelar_wasm_std_derive::IntoContractError;
+use connection_router;
+use connection_router::state::ChainName;
 use cosmwasm_std::StdError;
+use service_registry;
 use thiserror::Error;
 
-use axelar_wasm_std::{nonempty, voting};
-use connection_router;
-use connection_router::types::{ChainName, MessageID};
-use service_registry;
-
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, IntoContractError)]
 pub enum ContractError {
     #[error(transparent)]
     Std(#[from] StdError),
@@ -30,7 +30,7 @@ pub enum ContractError {
     MessageMismatch(String),
 
     #[error("invalid message id {0}")]
-    InvalidMessageID(MessageID),
+    InvalidMessageID(String),
 
     #[error("poll not found")]
     PollNotFound,

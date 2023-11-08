@@ -1,4 +1,4 @@
-use connection_router::msg::Message;
+use connection_router::state::{CrossChainId, Message};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 
 #[cw_serde]
@@ -20,5 +20,5 @@ pub enum ExecuteMsg {
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(Vec<Message>)]
-    GetMessages { message_ids: Vec<String> },
+    GetMessages { message_ids: Vec<CrossChainId> },
 }

@@ -4,7 +4,6 @@ use cosmwasm_std::{
     to_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Order, Response,
     Uint128,
 };
-// use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -22,7 +21,7 @@ pub fn instantiate(
     _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response, axelar_wasm_std::ContractError> {
     CONFIG.save(
         deps.storage,
         &Config {
@@ -38,7 +37,7 @@ pub fn execute(
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response, axelar_wasm_std::ContractError> {
     match msg {
         ExecuteMsg::RegisterService {
             service_name,
@@ -70,7 +69,7 @@ pub fn execute(
             execute::require_governance(&deps, info)?;
             let workers = workers
                 .into_iter()
-                .map(|w| deps.api.addr_validate(&w))
+                .map(|worker| deps.api.addr_validate(&worker))
                 .collect::<Result<Vec<_>, _>>()?;
             execute::update_worker_authorization_status(
                 deps,
@@ -86,7 +85,7 @@ pub fn execute(
             execute::require_governance(&deps, info)?;
             let workers = workers
                 .into_iter()
-                .map(|w| deps.api.addr_validate(&w))
+                .map(|worker| deps.api.addr_validate(&worker))
                 .collect::<Result<Vec<_>, _>>()?;
             execute::update_worker_authorization_status(
                 deps,
@@ -107,9 +106,12 @@ pub fn execute(
             execute::claim_stake(deps, env, info, service_name)
         }
     }
+    .map_err(axelar_wasm_std::ContractError::from)
 }
 
 pub mod execute {
+    use connection_router::state::ChainName;
+
     use crate::state::{AuthorizationState, WORKERS, WORKERS_PER_CHAIN};
 
     use super::*;
@@ -136,21 +138,25 @@ pub mod execute {
     ) -> Result<Response, ContractError> {
         let key = &service_name.clone();
 
-        SERVICES.update(deps.storage, key, |s| -> Result<Service, ContractError> {
-            match s {
-                None => Ok(Service {
-                    name: service_name,
-                    service_contract,
-                    min_num_workers,
-                    max_num_workers,
-                    min_worker_bond,
-                    bond_denom,
-                    unbonding_period_days,
-                    description,
-                }),
-                _ => Err(ContractError::ServiceAlreadyExists),
-            }
-        })?;
+        SERVICES.update(
+            deps.storage,
+            key,
+            |service| -> Result<Service, ContractError> {
+                match service {
+                    None => Ok(Service {
+                        name: service_name,
+                        service_contract,
+                        min_num_workers,
+                        max_num_workers,
+                        min_worker_bond,
+                        bond_denom,
+                        unbonding_period_days,
+                        description,
+                    }),
+                    _ => Err(ContractError::ServiceAlreadyExists),
+                }
+            },
+        )?;
 
         // Response with attributes? event?
         Ok(Response::new())
@@ -235,7 +241,7 @@ pub mod execute {
         deps: DepsMut,
         info: MessageInfo,
         service_name: String,
-        chains: Vec<String>,
+        chains: Vec<ChainName>,
     ) -> Result<Response, ContractError> {
         SERVICES
             .may_load(deps.storage, &service_name)?
@@ -327,11 +333,20 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             service_name,
             chain_name,
         } => to_binary(&query::get_active_workers(deps, service_name, chain_name)?)
-            .map_err(|e| e.into()),
+            .map_err(|err| err.into()),
+        QueryMsg::GetWorker {
+            service_name,
+            worker,
+        } => to_binary(&query::get_worker(deps, worker, service_name)?).map_err(|err| err.into()),
+        QueryMsg::GetService { service_name } => {
+            to_binary(&query::get_service(deps, service_name)?).map_err(|err| err.into())
+        }
     }
 }
 
 pub mod query {
+    use connection_router::state::ChainName;
+
     use crate::state::{AuthorizationState, WORKERS, WORKERS_PER_CHAIN};
 
     use super::*;
@@ -339,7 +354,7 @@ pub mod query {
     pub fn get_active_workers(
         deps: Deps,
         service_name: String,
-        chain_name: String,
+        chain_name: ChainName,
     ) -> Result<Vec<Worker>, ContractError> {
         let service = SERVICES
             .may_load(deps.storage, &service_name)?
@@ -359,5 +374,24 @@ pub mod query {
             .collect();
 
         Ok(workers)
+    }
+
+    pub fn get_worker(
+        deps: Deps,
+        service_name: String,
+        worker: String,
+    ) -> Result<Worker, ContractError> {
+        WORKERS
+            .may_load(
+                deps.storage,
+                (&service_name, &deps.api.addr_validate(&worker)?),
+            )?
+            .ok_or(ContractError::WorkerNotFound)
+    }
+
+    pub fn get_service(deps: Deps, service_name: String) -> Result<Service, ContractError> {
+        SERVICES
+            .may_load(deps.storage, &service_name)?
+            .ok_or(ContractError::ServiceNotFound)
     }
 }

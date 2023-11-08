@@ -8,16 +8,16 @@ use clap::{command, Parser, Subcommand, ValueEnum};
 use config::ConfigError;
 use cosmrs::{AccountId, Coin};
 use error_stack::{Report, ResultExt};
+use thiserror::Error;
 use tracing::{error, info};
 use valuable::Valuable;
 
 use ampd::cli;
 use ampd::cli::{BondWorkerArgs, DeclareChainSupportArgs};
 use ampd::config::Config;
-use ampd::report::Error;
-use ampd::report::LoggableError;
-use ampd::run;
+use ampd::{run, state};
 use axelar_wasm_std::utils::InspectorResult;
+use report::LoggableError;
 
 #[derive(Debug, Parser)]
 #[command(version)]
@@ -66,7 +66,7 @@ async fn main() -> ExitCode {
         Some(SubCommand::Daemon) | None =>{
             let result = run_daemon(&args)
                 .await
-                .tap_err(|report| error!(err = LoggableError::from(report).as_value(), "{report}"));
+                .tap_err(|report| error!(err = LoggableError::from(report).as_value(), "{report:#}"));
             info!("shutting down");
             match result {
                 Ok(_) => ExitCode::SUCCESS,
@@ -146,6 +146,30 @@ async fn worker_address(args: &Args) -> ExitCode {
 }
 
 
+async fn run_daemon(args: &Args) -> Result<(), Report<Error>> {
+    let cfg = init_config(&args.config);
+    let state_path = expand_home_dir(&args.state);
+
+    let state = state::load(&state_path).change_context(Error::Fatal)?;
+    let (state, execution_result) = run(cfg, state).await;
+    let state_flush_result = state::flush(&state, state_path).change_context(Error::Fatal);
+
+    let execution_result = execution_result.change_context(Error::Fatal);
+    match (execution_result, state_flush_result) {
+        // both execution and persisting state failed: return the merged error
+        (Err(mut report), Err(state_err)) => {
+            report.extend_one(state_err);
+            Err(report)
+        }
+
+        // any single path failed: report the error
+        (Err(report), Ok(())) | (Ok(()), Err(report)) => Err(report),
+
+        // no errors in either execution or persisting state
+        (Ok(()), Ok(())) => Ok(()),
+    }
+}
+
 fn set_up_logger(output: &Output) {
     match output {
         Output::Json => {
@@ -155,13 +179,6 @@ fn set_up_logger(output: &Output) {
             tracing_subscriber::fmt().compact().init();
         }
     };
-}
-
-async fn run_daemon(args: &Args) -> Result<(), Report<Error>> {
-    let cfg = init_config(&args.config);
-    let state_path = expand_home_dir(args.state.as_path());
-
-    run(cfg, state_path).await
 }
 
 fn init_config(config_paths: &[PathBuf]) -> Config {
@@ -176,7 +193,6 @@ fn init_config(config_paths: &[PathBuf]) -> Config {
 fn find_config_files(config: &[PathBuf]) -> Vec<File<FileSourceFile, FileFormat>> {
     let files = config
         .iter()
-        .map(PathBuf::as_path)
         .map(expand_home_dir)
         .map(canonicalize)
         .filter_map(Result::ok)
@@ -202,10 +218,19 @@ fn parse_config(
         .map_err(Report::from)
 }
 
-fn expand_home_dir(path: &Path) -> PathBuf {
-    let Ok(home_subfolder) = path.strip_prefix("~") else{
-        return path.to_path_buf()
+fn expand_home_dir(path: impl AsRef<Path>) -> PathBuf {
+    let path = path.as_ref();
+    let Ok(home_subfolder) = path.strip_prefix("~") else {
+        return path.to_path_buf();
     };
 
     dirs::home_dir().map_or(path.to_path_buf(), |home| home.join(home_subfolder))
+}
+
+#[derive(Error, Debug)]
+enum Error {
+    #[error("failed to load config")]
+    LoadConfig,
+    #[error("fatal failure")]
+    Fatal,
 }

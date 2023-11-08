@@ -1,7 +1,9 @@
 use crate::nonempty::Error;
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::HexBinary;
 
 #[cw_serde]
+#[serde(try_from = "std::vec::Vec<T>")]
 pub struct Vec<T>(std::vec::Vec<T>);
 
 impl<T> TryFrom<std::vec::Vec<T>> for Vec<T> {
@@ -16,9 +18,23 @@ impl<T> TryFrom<std::vec::Vec<T>> for Vec<T> {
     }
 }
 
+impl TryFrom<&HexBinary> for Vec<u8> {
+    type Error = Error;
+
+    fn try_from(value: &HexBinary) -> Result<Self, Self::Error> {
+        Vec::try_from(value.to_vec())
+    }
+}
+
 impl<T> From<Vec<T>> for std::vec::Vec<T> {
     fn from(value: Vec<T>) -> Self {
         value.0
+    }
+}
+
+impl<T> AsRef<std::vec::Vec<T>> for Vec<T> {
+    fn as_ref(&self) -> &std::vec::Vec<T> {
+        &self.0
     }
 }
 

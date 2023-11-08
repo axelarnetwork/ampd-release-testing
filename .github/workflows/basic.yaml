@@ -1,0 +1,118 @@
+# Based on https://github.com/actions-rs/example/blob/master/.github/workflows/quickstart.yml
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - releases/**
+
+name: Basic
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest-large
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.71.1
+          override: true
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "cache"
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --locked
+        env:
+          RUSTFLAGS: --cfg tracing_unstable
+          RUST_BACKTRACE: 1
+
+  cosmwasm-compilation:
+    name: Cosmwasm Compilation
+    runs-on: ubuntu-latest-large
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.71.1
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "cache"
+
+      - name: Compile WASM contract
+        uses: actions-rs/cargo@v1
+        with:
+          command: wasm
+        env:
+          RUSTFLAGS: --cfg tracing_unstable -C link-arg=-s
+
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest-large
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.71.1
+          override: true
+          components: rustfmt, clippy
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "cache"
+
+      - name: Install cargo-sort
+        uses: baptiste0928/cargo-install@v2
+        with:
+          crate: cargo-sort
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: Run cargo sort
+        uses: actions-rs/cargo@v1
+        with:
+          command: sort
+          args: --workspace --check --check-format
+
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings -A deprecated
+
+      - name: Check Diff
+        # fails if any changes not committed
+        run: git diff --exit-code

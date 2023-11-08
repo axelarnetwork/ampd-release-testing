@@ -1,49 +1,43 @@
+use crate::state::{ChainName, GatewayDirection, Message};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::HexBinary;
-
-use crate::types::GatewayDirection;
-
-// Message is a type meant to be used in interfaces where the data can be provided by the user.
-// The fields have not necessarily been validated, and should be checked prior to further processing.
-#[cw_serde]
-pub struct Message {
-    pub id: String, // should be globally unique
-    pub source_address: String,
-    pub source_chain: String,
-    pub destination_address: String,
-    pub destination_chain: String,
-    pub payload_hash: HexBinary,
-}
 
 #[cw_serde]
 pub struct InstantiateMsg {
+    // admin controls freezing and unfreezing a chain
     pub admin_address: String,
+    // governance votes on chains being added or upgraded
+    pub governance_address: String,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
     /*
-     * Router Admin Methods
-     * All of the below messages can only be called by the router admin
+     * Governance Methods
+     * All of the below messages can only be called by governance
      */
     // Registers a new chain with the router
     RegisterChain {
-        chain: String,
+        chain: ChainName,
         gateway_address: String,
     },
     // Changes the gateway address associated with a particular chain
     UpgradeGateway {
-        chain: String,
+        chain: ChainName,
         contract_address: String,
     },
+
+    /*
+     * Router Admin Methods
+     * All of the below messages can only be called by the router admin
+     */
     // Freezes a chain, in the specified direction.
     FreezeChain {
-        chain: String,
+        chain: ChainName,
         direction: GatewayDirection,
     },
     // Unfreezes a chain, in the specified direction.
     UnfreezeChain {
-        chain: String,
+        chain: ChainName,
         direction: GatewayDirection,
     },
 

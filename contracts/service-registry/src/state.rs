@@ -1,3 +1,4 @@
+use connection_router::state::ChainName;
 use cosmwasm_schema::cw_serde;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -43,7 +44,11 @@ impl TryFrom<Worker> for Participant {
         match worker.bonding_state {
             BondingState::Bonded { amount: _ } => Ok(Self {
                 address: worker.address,
-                weight: Uint256::one() // Weight is set to one to ensure all workers have same weight. In future it should be derived from amount bonded
+                // Weight is set to one to ensure all workers have same weight. In future it should be derived from amount bonded
+                // If the weight is changed to a non-constant value, the signing session completed event from multisig and the signature
+                // optimization during proof construction may require re-evaluation, so that relayers could take advantage of late
+                // signatures to get a more optimized version of the proof.
+                weight: Uint256::one()
                     .try_into()
                     .expect("violated invariant: weight must not be zero"),
             }),
@@ -126,7 +131,7 @@ pub enum AuthorizationState {
 // maps service_name -> Service
 pub const SERVICES: Map<&str, Service> = Map::new("services");
 // maps (service_name, chain_name, worker_address) -> ()
-pub const WORKERS_PER_CHAIN: Map<(&str, &str, &Addr), ()> = Map::new("workers_per_chain");
+pub const WORKERS_PER_CHAIN: Map<(&str, &ChainName, &Addr), ()> = Map::new("workers_per_chain");
 // maps (service_name, worker_address) -> Worker
 pub const WORKERS: Map<(&str, &Addr), Worker> = Map::new("workers");
 

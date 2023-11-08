@@ -5,7 +5,7 @@ use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
 use crate::error::ContractError;
 use crate::events::{ChainRegistered, RouterInstantiated};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{chain_endpoints, Config, Message, CONFIG};
+use crate::state::{chain_endpoints, Config, CONFIG};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -13,15 +13,17 @@ pub fn instantiate(
     _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response, axelar_wasm_std::ContractError> {
     let admin = deps.api.addr_validate(&msg.admin_address)?;
+    let governance = deps.api.addr_validate(&msg.governance_address)?;
     CONFIG.save(
         deps.storage,
         &Config {
             admin: admin.clone(),
+            governance: governance.clone(),
         },
     )?;
-    Ok(Response::new().add_event(RouterInstantiated { admin }.into()))
+    Ok(Response::new().add_event(RouterInstantiated { admin, governance }.into()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -30,55 +32,47 @@ pub fn execute(
     _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response, axelar_wasm_std::ContractError> {
     match msg {
         ExecuteMsg::RegisterChain {
             chain,
             gateway_address,
         } => {
-            execute::require_admin(&deps, info)?;
+            execute::require_governance(&deps, info)?;
             let gateway_address = deps.api.addr_validate(&gateway_address)?;
-            execute::register_chain(deps, chain.parse()?, gateway_address)
+            execute::register_chain(deps, chain, gateway_address)
         }
         ExecuteMsg::UpgradeGateway {
             chain,
             contract_address,
         } => {
-            execute::require_admin(&deps, info)?;
+            execute::require_governance(&deps, info)?;
             let contract_address = deps.api.addr_validate(&contract_address)?;
-            execute::upgrade_gateway(deps, chain.parse()?, contract_address)
+            execute::upgrade_gateway(deps, chain, contract_address)
         }
         ExecuteMsg::FreezeChain { chain, direction } => {
             execute::require_admin(&deps, info)?;
-            execute::freeze_chain(deps, chain.parse()?, direction)
+            execute::freeze_chain(deps, chain, direction)
         }
         ExecuteMsg::UnfreezeChain { chain, direction } => {
             execute::require_admin(&deps, info)?;
-            execute::unfreeze_chain(deps, chain.parse()?, direction)
+            execute::unfreeze_chain(deps, chain, direction)
         }
-        ExecuteMsg::RouteMessages(msgs) => execute::route_message(
-            deps,
-            info,
-            msgs.into_iter()
-                .map(Message::try_from)
-                .collect::<Result<Vec<Message>, _>>()?,
-        ),
+        ExecuteMsg::RouteMessages(msgs) => execute::route_message(deps, info, msgs),
     }
+    .map_err(axelar_wasm_std::ContractError::from)
 }
 
 pub mod execute {
+    use std::vec;
 
-    use std::{collections::HashMap, vec};
+    use cosmwasm_std::{Addr, WasmMsg};
+    use itertools::Itertools;
 
     use axelar_wasm_std::flagset::FlagSet;
-    use cosmwasm_std::{Addr, WasmMsg};
 
-    use crate::{
-        events::{ChainFrozen, GatewayInfo, GatewayUpgraded, MessageRouted},
-        msg::{self},
-        state::Message,
-        types::{ChainEndpoint, ChainName, Gateway, GatewayDirection},
-    };
+    use crate::events::{ChainFrozen, GatewayInfo, GatewayUpgraded, MessageRouted};
+    use crate::state::{ChainEndpoint, ChainName, Gateway, GatewayDirection, Message};
 
     use super::*;
 
@@ -190,22 +184,16 @@ pub mod execute {
             });
         }
 
-        let mut msgs_by_destination: HashMap<String, Vec<msg::Message>> = HashMap::new();
-        for msg in &msgs {
-            if source_chain.name != msg.source_chain {
-                return Err(ContractError::WrongSourceChain);
-            }
-
-            msgs_by_destination
-                .entry(msg.destination_chain.to_string())
-                .or_default()
-                .push(msg.clone().into());
+        if msgs.iter().any(|msg| msg.cc_id.chain != source_chain.name) {
+            return Err(ContractError::WrongSourceChain);
         }
 
         let mut wasm_msgs = vec![];
-        for (destination_chain, msgs) in msgs_by_destination {
+
+        for (destination_chain, msgs) in &msgs.iter().group_by(|msg| msg.destination_chain.clone())
+        {
             let destination_chain = chain_endpoints()
-                .may_load(deps.storage, destination_chain.parse()?)?
+                .may_load(deps.storage, destination_chain)?
                 .ok_or(ContractError::ChainNotFound)?;
 
             if outgoing_frozen(&destination_chain.frozen_status) {
@@ -216,7 +204,7 @@ pub mod execute {
 
             wasm_msgs.push(WasmMsg::Execute {
                 contract_addr: destination_chain.gateway.address.to_string(),
-                msg: to_binary(&msg::ExecuteMsg::RouteMessages(msgs))?,
+                msg: to_binary(&ExecuteMsg::RouteMessages(msgs.cloned().collect()))?,
                 funds: vec![],
             });
         }
@@ -229,6 +217,14 @@ pub mod execute {
     pub fn require_admin(deps: &DepsMut, info: MessageInfo) -> Result<(), ContractError> {
         let config = CONFIG.load(deps.storage)?;
         if config.admin != info.sender {
+            return Err(ContractError::Unauthorized);
+        }
+        Ok(())
+    }
+
+    pub fn require_governance(deps: &DepsMut, info: MessageInfo) -> Result<(), ContractError> {
+        let config = CONFIG.load(deps.storage)?;
+        if config.governance != info.sender {
             return Err(ContractError::Unauthorized);
         }
         Ok(())

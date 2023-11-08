@@ -1,12 +1,16 @@
 use std::fmt::Display;
 
+use axelar_wasm_std::{Participant, Snapshot};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{from_binary, HexBinary, StdResult, Uint256};
 use cw_storage_plus::{Key, KeyDeserialize, PrimaryKey};
-use multisig::key::Signature;
+use multisig::key::{PublicKey, Signature};
 use sha3::{Digest, Keccak256};
 
-use crate::{encoding::Data, state::WorkerSet};
+use crate::{
+    encoding::{Data, Encoder},
+    state::WorkerSet,
+};
 
 #[cw_serde]
 pub enum CommandType {
@@ -81,6 +85,7 @@ pub struct CommandBatch {
     pub id: BatchID,
     pub message_ids: Vec<String>,
     pub data: Data,
+    pub encoder: Encoder,
 }
 
 #[cw_serde]
@@ -92,7 +97,16 @@ pub struct Operator {
 }
 
 impl Operator {
-    pub fn set_signature(&mut self, sig: Signature) {
-        self.signature = Some(sig);
+    pub fn with_signature(self, sig: Signature) -> Operator {
+        Operator {
+            address: self.address,
+            weight: self.weight,
+            signature: Some(sig),
+        }
     }
+}
+
+pub struct WorkersInfo {
+    pub snapshot: Snapshot,
+    pub pubkeys_by_participant: Vec<(Participant, PublicKey)>,
 }

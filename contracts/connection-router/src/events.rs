@@ -1,19 +1,16 @@
-use cosmwasm_std::{Addr, Attribute, Event};
+use cosmwasm_std::{Addr, Attribute, Event, HexBinary};
+use std::ops::Deref;
 
-use crate::{state::Message, types::ChainName};
+use crate::state::{ChainName, Message};
 
 pub struct RouterInstantiated {
     pub admin: Addr,
+    pub governance: Addr,
 }
 
 pub struct ChainRegistered {
     pub name: ChainName,
     pub gateway: Addr,
-}
-
-pub enum GatewayDirection {
-    Incoming,
-    Outgoing,
 }
 
 pub struct GatewayInfo {
@@ -45,14 +42,11 @@ pub struct MessageRouted {
     pub msg: Message,
 }
 
-pub struct MessagesConsumed<'a> {
-    pub chain: ChainName,
-    pub msgs: &'a Vec<Message>,
-}
-
 impl From<RouterInstantiated> for Event {
     fn from(other: RouterInstantiated) -> Self {
-        Event::new("router_instantiated").add_attribute("admin_address", other.admin)
+        Event::new("router_instantiated")
+            .add_attribute("admin_address", other.admin)
+            .add_attribute("governance_address", other.governance)
     }
 }
 
@@ -109,12 +103,16 @@ impl From<ChainUnfrozen> for Event {
 impl From<Message> for Vec<Attribute> {
     fn from(other: Message) -> Self {
         vec![
-            ("id", other.id).into(),
-            ("source_chain", other.source_chain.clone()).into(),
-            ("source_addressess", other.source_address.clone()).into(),
-            ("destination_chain", other.destination_chain.clone()).into(),
-            ("destination_addressess", other.destination_address.clone()).into(),
-            ("payload_hash", other.payload_hash.to_string()).into(),
+            ("id", other.cc_id.id).into(),
+            ("source_chain", other.cc_id.chain).into(),
+            ("source_addresses", other.source_address.deref()).into(),
+            ("destination_chain", other.destination_chain).into(),
+            ("destination_addresses", other.destination_address.deref()).into(),
+            (
+                "payload_hash",
+                HexBinary::from(other.payload_hash).to_string(),
+            )
+                .into(),
         ]
     }
 }
@@ -127,25 +125,5 @@ pub fn make_message_event(event_name: &str, msg: Message) -> Event {
 impl From<MessageRouted> for Event {
     fn from(other: MessageRouted) -> Self {
         make_message_event("message_routed", other.msg)
-    }
-}
-
-impl<'a> From<MessagesConsumed<'a>> for Event {
-    fn from(other: MessagesConsumed) -> Self {
-        Event::new("messages_consumed")
-            .add_attribute("chain", other.chain)
-            .add_attribute("count", other.msgs.len().to_string())
-            .add_attribute(
-                "message_id",
-                format!(
-                    "[{}]",
-                    other
-                        .msgs
-                        .iter()
-                        .map(|m| m.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            )
     }
 }

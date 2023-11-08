@@ -4,6 +4,8 @@ use crate::nonempty::Error;
 use cosmwasm_schema::cw_serde;
 
 #[cw_serde]
+#[serde(try_from = "cosmwasm_std::Uint64")]
+#[serde(into = "cosmwasm_std::Uint64")]
 #[derive(Copy, PartialOrd)]
 pub struct Uint64(cosmwasm_std::Uint64);
 
@@ -36,6 +38,12 @@ impl<'a> From<&'a Uint64> for &'a cosmwasm_std::Uint64 {
 impl From<Uint64> for cosmwasm_std::Uint64 {
     fn from(value: Uint64) -> Self {
         value.0
+    }
+}
+
+impl From<Uint64> for u64 {
+    fn from(value: Uint64) -> Self {
+        value.0.into()
     }
 }
 
@@ -119,5 +127,11 @@ mod tests {
             Uint256::try_from(cosmwasm_std::Uint256::zero()).unwrap_err(),
             Error::InvalidValue("0".into())
         );
+    }
+
+    #[test]
+    fn test_from_u64() {
+        let val = 100u64;
+        assert_eq!(val, u64::from(Uint64::try_from(val).unwrap()));
     }
 }

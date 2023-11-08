@@ -1,18 +1,33 @@
+#![allow(deprecated)]
+
 use core::panic;
+use std::any::type_name;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+use std::ops::Deref;
+use std::str::FromStr;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, DepsMut, HexBinary, Order, StdResult};
-use cw_storage_plus::{Index, IndexList, IndexedMap, Item, MultiIndex};
-
-use crate::{
-    msg,
-    types::{ChainEndpoint, ChainName, MessageID, ID_SEPARATOR},
-    ContractError,
+use cosmwasm_std::{Addr, DepsMut, Order, StdError, StdResult};
+use cw_storage_plus::{
+    Index, IndexList, IndexedMap, Item, Key, KeyDeserialize, MultiIndex, Prefixer, PrimaryKey,
 };
+use error_stack::{Report, ResultExt};
+use flagset::flags;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use axelar_wasm_std::flagset::FlagSet;
+use axelar_wasm_std::{nonempty, FnExt};
+
+use crate::ContractError;
+
+pub const ID_SEPARATOR: char = ':';
 
 #[cw_serde]
 pub struct Config {
     pub admin: Addr,
+    pub governance: Addr,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");
@@ -73,107 +88,319 @@ impl<'a> IndexList<ChainEndpoint> for ChainEndpointIndexes<'a> {
     }
 }
 
-// Message represents a message for which the fields have been successfully validated.
-// This should never be supplied by the user.
 #[cw_serde]
 pub struct Message {
-    pub id: MessageID, // globally unique
-    pub destination_address: String,
+    pub cc_id: CrossChainId,
+    pub source_address: Address,
     pub destination_chain: ChainName,
-    pub source_chain: ChainName,
-    pub source_address: String,
-    pub payload_hash: HexBinary,
+    pub destination_address: Address,
+    /// for better user experience, the payload hash gets encoded into hex at the edges (input/output),
+    /// but internally, we treat it as raw bytes to enforce it's format.
+    #[serde(with = "axelar_wasm_std::hex")]
+    #[schemars(with = "String")] // necessary attribute in conjunction with #[serde(with ...)]
+    pub payload_hash: [u8; 32],
 }
 
-impl Message {
-    pub fn new(
-        id: MessageID,
-        destination_address: String,
-        destination_chain: ChainName,
-        source_chain: ChainName,
-        source_address: String,
-        payload_hash: HexBinary,
-    ) -> Self {
-        Message {
-            id,
-            destination_address,
-            destination_chain,
-            source_chain,
-            source_address,
-            payload_hash,
-        }
+#[cw_serde]
+pub struct Address(nonempty::String);
+
+impl Deref for Address {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
     }
 }
 
-impl TryFrom<msg::Message> for Message {
-    type Error = ContractError;
-    fn try_from(value: msg::Message) -> Result<Self, Self::Error> {
-        if value.destination_address.is_empty() {
-            return Err(ContractError::InvalidAddress(value.destination_address));
-        }
+impl FromStr for Address {
+    type Err = Report<ContractError>;
 
-        if value.source_address.is_empty() {
-            return Err(ContractError::InvalidAddress(value.source_address));
-        }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Address::try_from(s.to_string())
+    }
+}
 
-        if !value
-            .id
-            .starts_with(&format!("{}{}", value.source_chain, ID_SEPARATOR))
-        {
-            return Err(ContractError::InvalidMessageID);
-        }
+impl TryFrom<String> for Address {
+    type Error = Report<ContractError>;
 
-        Ok(Message::new(
-            value.id.parse()?,
-            value.destination_address,
-            value.destination_chain.parse()?,
-            value.source_chain.parse()?,
-            value.source_address,
-            value.payload_hash,
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(Address(
+            value
+                .parse::<nonempty::String>()
+                .change_context(ContractError::InvalidAddress)?,
         ))
     }
 }
 
-impl From<Message> for msg::Message {
-    fn from(value: Message) -> Self {
-        msg::Message {
-            id: value.id.to_string(),
-            destination_address: value.destination_address,
-            destination_chain: value.destination_chain.into(),
-            source_address: value.source_address,
-            source_chain: value.source_chain.into(),
-            payload_hash: value.payload_hash,
+#[cw_serde]
+#[derive(Eq, Hash)]
+pub struct CrossChainId {
+    pub chain: ChainName,
+    pub id: nonempty::String,
+}
+
+/// todo: remove this when state::NewMessage is used
+impl FromStr for CrossChainId {
+    type Err = ContractError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts = s.split_once(ID_SEPARATOR);
+        let (chain, id) = parts
+            .map(|(chain, id)| {
+                (
+                    chain.parse::<ChainName>(),
+                    id.parse::<nonempty::String>()
+                        .map_err(|_| ContractError::InvalidMessageId),
+                )
+            })
+            .ok_or(ContractError::InvalidMessageId)?;
+        Ok(CrossChainId {
+            chain: chain?,
+            id: id?,
+        })
+    }
+}
+
+impl Display for CrossChainId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}{}", self.chain, ID_SEPARATOR, *self.id)
+    }
+}
+
+impl PrimaryKey<'_> for CrossChainId {
+    type Prefix = ChainName;
+    type SubPrefix = ();
+    type Suffix = String;
+    type SuperSuffix = (ChainName, String);
+
+    fn key(&self) -> Vec<Key> {
+        let mut keys = self.chain.key();
+        keys.extend(self.id.key());
+        keys
+    }
+}
+
+impl KeyDeserialize for CrossChainId {
+    type Output = Self;
+
+    fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
+        let (chain, id) = <(ChainName, String)>::from_vec(value)?;
+        Ok(CrossChainId {
+            chain,
+            id: id
+                .try_into()
+                .map_err(|err| StdError::parse_err(type_name::<nonempty::String>(), err))?,
+        })
+    }
+}
+
+#[cw_serde]
+#[serde(try_from = "String")]
+#[derive(Eq, Hash)]
+pub struct ChainName(String);
+
+impl FromStr for ChainName {
+    type Err = ContractError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.contains(ID_SEPARATOR) || s.is_empty() {
+            return Err(ContractError::InvalidChainName);
         }
+
+        Ok(ChainName(s.to_lowercase()))
+    }
+}
+
+impl From<ChainName> for String {
+    fn from(d: ChainName) -> Self {
+        d.0
+    }
+}
+
+impl TryFrom<String> for ChainName {
+    type Error = ContractError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
+impl Display for ChainName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl PartialEq<String> for ChainName {
+    fn eq(&self, other: &String) -> bool {
+        self.0 == other.to_lowercase()
+    }
+}
+
+impl<'a> PrimaryKey<'a> for ChainName {
+    type Prefix = ();
+    type SubPrefix = ();
+    type Suffix = Self;
+    type SuperSuffix = Self;
+
+    fn key(&self) -> Vec<Key> {
+        vec![Key::Ref(self.0.as_bytes())]
+    }
+}
+
+impl<'a> Prefixer<'a> for ChainName {
+    fn prefix(&self) -> Vec<Key> {
+        vec![Key::Ref(self.0.as_bytes())]
+    }
+}
+
+impl KeyDeserialize for ChainName {
+    type Output = Self;
+
+    #[inline(always)]
+    fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
+        String::from_utf8(value)
+            .map_err(StdError::invalid_utf8)?
+            .then(ChainName::try_from)
+            .map_err(StdError::invalid_utf8)
+    }
+}
+
+impl KeyDeserialize for &ChainName {
+    type Output = ChainName;
+
+    #[inline(always)]
+    fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
+        ChainName::from_vec(value)
+    }
+}
+
+#[cw_serde]
+pub struct Gateway {
+    pub address: Addr,
+}
+
+#[cw_serde]
+pub struct ChainEndpoint {
+    pub name: ChainName,
+    pub gateway: Gateway,
+    pub frozen_status: FlagSet<GatewayDirection>,
+}
+
+flags! {
+    #[repr(u8)]
+    #[derive(Deserialize, Serialize, Hash, JsonSchema)]
+    pub enum GatewayDirection: u8 {
+        None = 0,
+        Incoming = 1,
+        Outgoing = 2,
+        Bidirectional = (GatewayDirection::Incoming | GatewayDirection::Outgoing).bits(),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use cosmwasm_std::to_vec;
     use hex;
+    use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
     use sha3::{Digest, Sha3_256};
 
-    use super::Message;
+    use crate::ContractError;
 
     #[test]
     // Any modifications to the Message struct fields or their types
     // will cause this test to fail, indicating that a migration is needed.
     fn test_message_struct_unchanged() {
         let expected_message_hash =
-            "d11ab98e76d9a14741e2c179bcafd06f1941018ec8a44e60a35701761f4fa8a9";
+            "9f9b9c55ccf5ce5a82f66385cae9e84e402a272fece5a2e22a199dbefc91d8bf";
 
-        let msg = Message {
-            id: "chain:id".to_string().parse().unwrap(),
-            source_chain: "chain".to_string().parse().unwrap(),
-            source_address: "source_address".to_string(),
-            destination_chain: "destination_chain".to_string().parse().unwrap(),
-            destination_address: "destination_address".to_string(),
-            payload_hash: [1; 32].into(),
-        };
+        let msg = dummy_message();
 
         assert_eq!(
             hex::encode(Sha3_256::digest(&to_vec(&msg).unwrap())),
             expected_message_hash
         );
+    }
+
+    #[test]
+    fn should_fail_to_parse_invalid_chain_name() {
+        // empty
+        assert_eq!(
+            "".parse::<ChainName>().unwrap_err(),
+            ContractError::InvalidChainName
+        );
+
+        // name contains id separator
+        assert_eq!(
+            format!("chain {ID_SEPARATOR}")
+                .parse::<ChainName>()
+                .unwrap_err(),
+            ContractError::InvalidChainName
+        );
+    }
+
+    #[test]
+    fn should_parse_to_case_insensitive_chain_name() {
+        let rand_str: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(10)
+            .map(char::from)
+            .collect();
+
+        let chain_name: ChainName = rand_str.parse().unwrap();
+
+        assert_eq!(
+            chain_name,
+            rand_str.to_lowercase().parse::<ChainName>().unwrap()
+        );
+        assert_eq!(
+            chain_name,
+            rand_str.to_uppercase().parse::<ChainName>().unwrap()
+        );
+    }
+
+    #[test]
+    fn should_not_deserialize_invalid_chain_name() {
+        assert_eq!(
+            "chain name is invalid",
+            serde_json::from_str::<ChainName>(format!("\"\"").as_str())
+                .unwrap_err()
+                .to_string()
+        );
+
+        assert_eq!(
+            "chain name is invalid",
+            serde_json::from_str::<ChainName>(format!("\"chain{ID_SEPARATOR}\"").as_str())
+                .unwrap_err()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn chain_name_case_insensitive_comparison() {
+        let chain_name = ChainName::from_str("ethereum").unwrap();
+
+        assert!(chain_name.eq(&"Ethereum".to_string()));
+        assert!(chain_name.eq(&"ETHEREUM".to_string()));
+        assert!(chain_name.eq(&"ethereum".to_string()));
+        assert!(chain_name.eq(&"ethEReum".to_string()));
+
+        assert!(!chain_name.eq(&"Ethereum-1".to_string()));
+    }
+
+    fn dummy_message() -> Message {
+        Message {
+            cc_id: CrossChainId {
+                id: "hash:index".parse().unwrap(),
+                chain: "chain".parse().unwrap(),
+            },
+            source_address: "source_address".parse().unwrap(),
+            destination_chain: "destination_chain".parse().unwrap(),
+            destination_address: "destination_address".parse().unwrap(),
+            payload_hash: [1; 32].into(),
+        }
     }
 }

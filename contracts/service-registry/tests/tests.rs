@@ -1,5 +1,6 @@
-use std::vec;
+use std::{str::FromStr, vec};
 
+use connection_router::state::ChainName;
 use cosmwasm_std::{coins, Addr, BlockInfo, Uint128};
 use cw_multi_test::{App, ContractWrapper, Executor};
 use service_registry::{
@@ -63,8 +64,11 @@ fn register_service() {
     );
     assert!(!res.is_ok());
     assert_eq!(
-        ContractError::Unauthorized,
-        res.unwrap_err().downcast().unwrap()
+        res.unwrap_err()
+            .downcast::<axelar_wasm_std::ContractError>()
+            .unwrap()
+            .to_string(),
+        axelar_wasm_std::ContractError::from(ContractError::Unauthorized).to_string()
     );
 }
 
@@ -125,8 +129,11 @@ fn authorize_worker() {
         &[],
     );
     assert_eq!(
-        ContractError::Unauthorized,
-        res.unwrap_err().downcast().unwrap()
+        res.unwrap_err()
+            .downcast::<axelar_wasm_std::ContractError>()
+            .unwrap()
+            .to_string(),
+        axelar_wasm_std::ContractError::from(ContractError::Unauthorized).to_string()
     );
 }
 
@@ -259,13 +266,13 @@ fn declare_chain_support() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name.clone()],
         },
         &[],
     );
@@ -277,7 +284,7 @@ fn declare_chain_support() {
             contract_addr.clone(),
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: chain_name.into(),
+                chain_name,
             },
         )
         .unwrap();
@@ -299,7 +306,7 @@ fn declare_chain_support() {
             contract_addr,
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: "some other chain".into(),
+                chain_name: ChainName::from_str("some other chain").unwrap(),
             },
         )
         .unwrap();
@@ -370,13 +377,13 @@ fn unbond_worker() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name.clone()],
         },
         &[],
     );
@@ -399,7 +406,7 @@ fn unbond_worker() {
             contract_addr,
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: chain_name.into(),
+                chain_name,
             },
         )
         .unwrap();
@@ -460,8 +467,11 @@ fn bond_wrong_denom() {
     );
     assert!(res.is_err());
     assert_eq!(
-        ContractError::WrongDenom,
-        res.unwrap_err().downcast().unwrap()
+        res.unwrap_err()
+            .downcast::<axelar_wasm_std::ContractError>()
+            .unwrap()
+            .to_string(),
+        axelar_wasm_std::ContractError::from(ContractError::WrongDenom).to_string()
     );
 }
 
@@ -519,13 +529,13 @@ fn bond_but_not_authorized() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name.clone()],
         },
         &[],
     );
@@ -537,7 +547,7 @@ fn bond_but_not_authorized() {
             contract_addr.clone(),
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: chain_name.into(),
+                chain_name,
             },
         )
         .unwrap();
@@ -609,13 +619,13 @@ fn bond_but_not_enough() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name.clone()],
         },
         &[],
     );
@@ -627,7 +637,7 @@ fn bond_but_not_enough() {
             contract_addr.clone(),
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: chain_name.into(),
+                chain_name,
             },
         )
         .unwrap();
@@ -699,13 +709,13 @@ fn bond_before_authorize() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name.clone()],
         },
         &[],
     );
@@ -717,7 +727,7 @@ fn bond_before_authorize() {
             contract_addr.clone(),
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: chain_name.into(),
+                chain_name,
             },
         )
         .unwrap();
@@ -798,13 +808,13 @@ fn unbond_then_rebond() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name.clone()],
         },
         &[],
     );
@@ -837,7 +847,7 @@ fn unbond_then_rebond() {
             contract_addr.clone(),
             &QueryMsg::GetActiveWorkers {
                 service_name: service_name.into(),
-                chain_name: chain_name.into(),
+                chain_name,
             },
         )
         .unwrap();
@@ -920,13 +930,13 @@ fn unbonding_period() {
     );
     assert!(res.is_ok());
 
-    let chain_name = "ethereum";
+    let chain_name = ChainName::from_str("ethereum").unwrap();
     let res = app.execute_contract(
         worker.clone(),
         contract_addr.clone(),
         &ExecuteMsg::DeclareChainSupport {
             service_name: service_name.into(),
-            chains: vec![chain_name.into()],
+            chains: vec![chain_name],
         },
         &[],
     );
@@ -962,11 +972,17 @@ fn unbonding_period() {
     );
     assert!(!res.is_ok());
     assert_eq!(
-        ContractError::InvalidBondingState(BondingState::Unbonding {
-            unbonded_at: app.block_info().time,
-            amount: min_worker_bond,
-        }),
-        res.unwrap_err().downcast().unwrap()
+        res.unwrap_err()
+            .downcast::<axelar_wasm_std::ContractError>()
+            .unwrap()
+            .to_string(),
+        axelar_wasm_std::ContractError::from(ContractError::InvalidBondingState(
+            BondingState::Unbonding {
+                unbonded_at: app.block_info().time,
+                amount: min_worker_bond,
+            }
+        ))
+        .to_string()
     );
     assert_eq!(
         app.wrap()
