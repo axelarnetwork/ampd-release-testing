@@ -15,7 +15,7 @@ pub struct Params {
     pub epoch_duration: nonempty::Uint64,
 
     /// Total number of tokens distributed as rewards per epoch. Tokens are split equally amongst all participating workers for a given epoch
-    pub rewards_per_epoch: nonempty::Uint256,
+    pub rewards_per_epoch: nonempty::Uint128,
 
     /// Participation threshold workers must meet to receive rewards in a given epoch, specified as a fraction between 0 (exclusive) and 1 (exclusive). Workers
     /// must participate in at least this fraction of all events in a given epoch to receive rewards. So, if participation_threshold is 9/10,
@@ -27,8 +27,15 @@ pub struct Params {
 #[cw_serde]
 pub enum ExecuteMsg {
     /// Log a specific worker as participating in a specific event
+    ///
+    /// TODO: For batched voting, treating the entire batch as a single event can be problematic.
+    /// A worker may vote correctly for 9 out of 10 messages in a batch, but the worker's participation
+    /// will not be recorded, because of the one message that the worker voted incorrectly for. Or the voting
+    /// verifier could choose to record the participation, but then the missed message is not recorded in any way.
+    /// A possible solution to this is to add a weight to each event, where the voting verifier specifies the number
+    /// of messages in a batch as well as the number of messages a particular worker actually participated in.
     RecordParticipation {
-        event_id: String,
+        event_id: nonempty::String,
         worker_address: String,
     },
 
