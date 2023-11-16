@@ -63,10 +63,10 @@ async fn main() -> ExitCode {
     set_up_logger(&args.output);
 
     match &args.cmd {
-        Some(SubCommand::Daemon) | None =>{
-            let result = run_daemon(&args)
-                .await
-                .tap_err(|report| error!(err = LoggableError::from(report).as_value(), "{report:#}"));
+        Some(SubCommand::Daemon) | None => {
+            let result = run_daemon(&args).await.tap_err(|report| {
+                error!(err = LoggableError::from(report).as_value(), "{report:#}")
+            });
             info!("shutting down");
             match result {
                 Ok(_) => ExitCode::SUCCESS,
@@ -79,8 +79,7 @@ async fn main() -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
-
-        },
+        }
         Some(SubCommand::BondWorker(cmd_args)) => bond_worker(&args, cmd_args).await,
         Some(SubCommand::DeclareChainSupport(cmd_args)) => {
             declare_chain_support(&args, cmd_args).await
@@ -99,7 +98,6 @@ async fn bond_worker(args: &Args, params: &BondWorkerArgs) -> ExitCode {
 
     cli::bond_worker(
         cfg,
-        args.state.clone(),
         service_registry,
         params.service_name.clone(),
         coin,
@@ -117,7 +115,6 @@ async fn declare_chain_support(args: &Args, params: &DeclareChainSupportArgs) ->
 
     cli::declare_chain_support(
         cfg,
-        args.state.clone(),
         service_registry,
         params.service_name.clone(),
         params.chains.clone(),
@@ -131,7 +128,7 @@ async fn register_public_key(args: &Args) -> ExitCode {
     info!("registering public key to multisig signer contract");
 
     let cfg = init_config(&args.config);
-    cli::register_public_key(cfg, args.state.clone()).await;
+    cli::register_public_key(cfg).await;
 
     ExitCode::SUCCESS
 }
@@ -140,11 +137,10 @@ async fn worker_address(args: &Args) -> ExitCode {
     info!("querying worker address");
 
     let cfg = init_config(&args.config);
-    cli::worker_address(cfg, args.state.clone()).await;
+    cli::worker_address(cfg).await;
 
     ExitCode::SUCCESS
 }
-
 
 async fn run_daemon(args: &Args) -> Result<(), Report<Error>> {
     let cfg = init_config(&args.config);

@@ -1,5 +1,4 @@
 use std::convert::TryFrom;
-use std::path::PathBuf;
 
 use clap::Args;
 use cosmos_sdk_proto::cosmos::{
@@ -10,6 +9,7 @@ use cosmrs::tx::Msg;
 use cosmrs::{AccountId, Coin};
 use error_stack::ResultExt;
 
+use connection_router::state::ChainName;
 use multisig::{
     key::{KeyType, PublicKey as MultisigPublicKey},
     msg::ExecuteMsg as MultisigExecuteMsg,
@@ -20,11 +20,10 @@ use crate::broadcaster;
 use crate::broadcaster::{accounts::account, Broadcaster, Config as BroadcastConfig};
 use crate::config::Config;
 use crate::handlers;
-use crate::report::Error;
-use crate::state::StateUpdater;
 use crate::tofnd::grpc::{MultisigClient, SharableEcdsaClient};
 use crate::types::PublicKey;
 use crate::url::Url;
+use crate::Error;
 
 type Result<T> = error_stack::Result<T, Error>;
 
@@ -47,7 +46,6 @@ pub struct DeclareChainSupportArgs {
 
 pub async fn bond_worker(
     config: Config,
-    state_path: PathBuf,
     service_registry: AccountId,
     service_name: String,
     coin: Coin,
@@ -66,13 +64,9 @@ pub async fn bond_worker(
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
 
-    let pub_key = pub_key(
-        state_path,
-        tofnd_config.key_uid.as_str(),
-        ecdsa_client.clone(),
-    )
-    .await
-    .unwrap();
+    let pub_key = pub_key(tofnd_config.key_uid.as_str(), ecdsa_client.clone())
+        .await
+        .unwrap();
 
     let msg = serde_json::to_vec(&ExecuteMsg::BondWorker { service_name })
         .expect("bond worker msg should serialize");
@@ -99,7 +93,6 @@ pub async fn bond_worker(
 
 pub async fn declare_chain_support(
     config: Config,
-    state_path: PathBuf,
     service_registry: AccountId,
     service_name: String,
     chains: Vec<String>,
@@ -118,13 +111,14 @@ pub async fn declare_chain_support(
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
 
-    let pub_key = pub_key(
-        state_path,
-        tofnd_config.key_uid.as_str(),
-        ecdsa_client.clone(),
-    )
-    .await
-    .unwrap();
+    let pub_key = pub_key(tofnd_config.key_uid.as_str(), ecdsa_client.clone())
+        .await
+        .unwrap();
+
+    let chains = chains
+        .into_iter()
+        .map(|c| ChainName::try_from(c).unwrap())
+        .collect();
 
     let msg = serde_json::to_vec(&ExecuteMsg::DeclareChainSupport {
         service_name,
@@ -152,7 +146,7 @@ pub async fn declare_chain_support(
     .await
 }
 
-pub async fn register_public_key(config: Config, state_path: PathBuf) {
+pub async fn register_public_key(config: Config) {
     let Config {
         tm_grpc,
         broadcast,
@@ -168,13 +162,9 @@ pub async fn register_public_key(config: Config, state_path: PathBuf) {
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
 
-    let pub_key = pub_key(
-        state_path,
-        tofnd_config.key_uid.as_str(),
-        ecdsa_client.clone(),
-    )
-    .await
-    .unwrap();
+    let pub_key = pub_key(tofnd_config.key_uid.as_str(), ecdsa_client.clone())
+        .await
+        .unwrap();
 
     // get multisig contract address
     let multisig_address = handlers
@@ -194,12 +184,15 @@ pub async fn register_public_key(config: Config, state_path: PathBuf) {
         .keygen(multisig_address.to_string().as_str())
         .await
         .unwrap();
+
     let multisig_pub_key =
         MultisigPublicKey::try_from((KeyType::Ecdsa, multisig_pub_key.to_bytes().into())).unwrap();
     let msg = serde_json::to_vec(&MultisigExecuteMsg::RegisterPublicKey {
         public_key: multisig_pub_key,
     })
     .expect("bond worker msg should serialize");
+
+    println!("msg: {:?}", msg);
 
     let tx = MsgExecuteContract {
         sender: pub_key
@@ -221,11 +214,8 @@ pub async fn register_public_key(config: Config, state_path: PathBuf) {
     .await
 }
 
-pub async fn worker_address(config: Config, state_path: PathBuf) {
-    let Config {
-        tofnd_config,
-        ..
-    } = config;
+pub async fn worker_address(config: Config) {
+    let Config { tofnd_config, .. } = config;
 
     let multisig_client = MultisigClient::connect(tofnd_config.party_uid, tofnd_config.url)
         .await
@@ -234,13 +224,9 @@ pub async fn worker_address(config: Config, state_path: PathBuf) {
 
     let ecdsa_client = SharableEcdsaClient::new(multisig_client);
 
-    let pub_key = pub_key(
-        state_path,
-        tofnd_config.key_uid.as_str(),
-        ecdsa_client.clone(),
-    )
-    .await
-    .unwrap();
+    let pub_key = pub_key(tofnd_config.key_uid.as_str(), ecdsa_client.clone())
+        .await
+        .unwrap();
 
     println!(
         "Worker address is {}",
@@ -251,25 +237,11 @@ pub async fn worker_address(config: Config, state_path: PathBuf) {
     )
 }
 
-async fn pub_key(
-    state_path: PathBuf,
-    key_uid: &str,
-    ecdsa_client: SharableEcdsaClient,
-) -> Result<PublicKey> {
-    let mut state_updater = StateUpdater::new(state_path).change_context(Error::StateUpdater)?;
-
-    match state_updater.state().pub_key {
-        Some(pub_key) => Ok(pub_key),
-        None => {
-            let pub_key = ecdsa_client
-                .keygen(key_uid)
-                .await
-                .change_context(Error::Tofnd)?;
-            state_updater.as_mut().pub_key = Some(pub_key);
-
-            Ok(pub_key)
-        }
-    }
+async fn pub_key(key_uid: &str, ecdsa_client: SharableEcdsaClient) -> Result<PublicKey> {
+    Ok(ecdsa_client
+        .keygen(key_uid)
+        .await
+        .change_context(Error::Tofnd)?)
 }
 
 async fn broadcast_execute_contract(
@@ -310,8 +282,10 @@ async fn broadcast_execute_contract(
         .change_context(Error::Broadcaster)
         .unwrap();
 
-    broadcaster
+    let res = broadcaster
         .broadcast(vec![tx.into_any().unwrap()])
         .await
         .unwrap();
+
+    println!("res: {:?}", res);
 }
