@@ -6,3 +6,4 @@ pub mod evm_verify_msg;
 pub mod evm_verify_worker_set;
 pub mod multisig;
 pub mod sui_verify_msg;
+pub mod sui_verify_worker_set;

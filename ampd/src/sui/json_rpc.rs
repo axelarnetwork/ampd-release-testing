@@ -13,6 +13,10 @@ type Result<T> = error_stack::Result<T, ProviderError>;
 #[automock]
 #[async_trait]
 pub trait SuiClient {
+    async fn finalized_transaction_block(
+        &self,
+        digest: TransactionDigest,
+    ) -> Result<Option<SuiTransactionBlockResponse>>;
     async fn finalized_transaction_blocks(
         &self,
         digests: HashSet<TransactionDigest>,
@@ -46,5 +50,20 @@ where
                 .map(|block| (block.digest, block))
                 .collect()
         })
+    }
+
+    async fn finalized_transaction_block(
+        &self,
+        digest: TransactionDigest,
+    ) -> Result<Option<SuiTransactionBlockResponse>> {
+        self.request(
+            "sui_multiGetTransactionBlock",
+            (
+                digest.base58_encode(),
+                SuiTransactionBlockResponseOptions::new().with_events(),
+            ),
+        )
+        .await
+        .and_then(|block: SuiTransactionBlockResponse| Ok(block.checkpoint.map(|_| block)))
     }
 }
