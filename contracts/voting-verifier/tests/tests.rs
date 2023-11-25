@@ -1,3 +1,4 @@
+use axelar_wasm_std::voting::Vote;
 use cosmwasm_std::{from_binary, Addr, Uint64};
 use cw_multi_test::{App, ContractWrapper, Executor};
 
@@ -312,8 +313,14 @@ fn should_query_message_statuses() {
     let msg: msg::ExecuteMsg = msg::ExecuteMsg::Vote {
         poll_id: Uint64::one().into(),
         votes: (0..messages.len())
-            .map(|i| i % 2 == 0)
-            .collect::<Vec<bool>>(),
+            .map(|i| {
+                if i % 2 == 0 {
+                    Vote::Success
+                } else {
+                    Vote::Unknown
+                }
+            })
+            .collect::<Vec<Vote>>(),
     };
 
     app.execute_contract(
@@ -415,7 +422,7 @@ fn should_confirm_worker_set() {
 
     let msg = msg::ExecuteMsg::Vote {
         poll_id: 1u64.into(),
-        votes: vec![true],
+        votes: vec![Vote::Success],
     };
     for worker in workers {
         let res = app.execute_contract(worker.address.clone(), contract_address.clone(), &msg, &[]);
@@ -471,7 +478,7 @@ fn should_not_confirm_worker_set() {
 
     let msg = msg::ExecuteMsg::Vote {
         poll_id: 1u64.into(),
-        votes: vec![false],
+        votes: vec![Vote::Unknown],
     };
     for worker in workers {
         let res = app.execute_contract(worker.address.clone(), contract_address.clone(), &msg, &[]);
@@ -527,7 +534,7 @@ fn should_confirm_worker_set_after_failed() {
 
     let msg = msg::ExecuteMsg::Vote {
         poll_id: 1u64.into(),
-        votes: vec![false],
+        votes: vec![Vote::Unknown],
     };
     for worker in &workers {
         let res = app.execute_contract(worker.address.clone(), contract_address.clone(), &msg, &[]);
@@ -561,7 +568,7 @@ fn should_confirm_worker_set_after_failed() {
 
     let msg = msg::ExecuteMsg::Vote {
         poll_id: 2u64.into(),
-        votes: vec![true],
+        votes: vec![Vote::Success],
     };
     for worker in workers {
         let res = app.execute_contract(worker.address.clone(), contract_address.clone(), &msg, &[]);
@@ -617,7 +624,7 @@ fn should_not_confirm_twice() {
 
     let msg = msg::ExecuteMsg::Vote {
         poll_id: 1u64.into(),
-        votes: vec![true],
+        votes: vec![Vote::Success],
     };
     for worker in workers {
         let res = app.execute_contract(worker.address.clone(), contract_address.clone(), &msg, &[]);
