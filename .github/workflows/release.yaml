@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      binary-to-release:
+        description: Binary to release
+        type: choice
+        options:
+          - ampd
+          - agggregate-verifier
+          - batching
+          - connection-router
+          - gateway
+          - multisig
+          - multisig-prover
+          - nexus-gateway
+          - rewards
+          - service-registry
+          - voting-verifier
+      dry-run:
+        description: Dry run
+        type: boolean
+        default: true
+
+jobs:
+  release-ampd:
+    name: Release Ampd
+    if: github.event.inputs.binary-to-release == 'ampd'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+      - name: Release
+        uses: ./.github/actions/release
+        with:
+          binary-to-release: ampd
+          dry-run: ${{ github.event.inputs.dry-run }}
+          major-pattern: "(MAJOR-AMPD)"
+          minor-pattern: "(MINOR-AMPD)"
+          tag-prefix: "ampd-v"
+
