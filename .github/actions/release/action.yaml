@@ -54,13 +54,13 @@ runs:
       id: print-semantic-version
       shell: bash
       run: |
-        echo "MAJOR-DB:
+        echo "MAJOR:
           ${{ steps.semantic-version.outputs.major }}"
-        echo "MINOR-DB:
+        echo "MINOR:
           ${{ steps.semantic-version.outputs.minor }}"
-        echo "PATCH-DB:
+        echo "PATCH:
           ${{ steps.semantic-version.outputs.patch }}"
-        echo "DB-VERSION:
+        echo "VERSION:
           ${{ steps.semantic-version.outputs.version }}"
         echo "VERSION-TAG:
           ${{ steps.semantic-version.outputs.version_tag }}"
@@ -136,15 +136,15 @@ runs:
         fi
 
     - name: Edit cargo toml version
-      uses: ciiiii/toml-editor@1.0.0
       if:
         inputs.dry-run == 'false' &&
         steps.semantic-version.outputs.changed == 'true'
-      with:
-        file: ${{ inputs.cargo-toml-path }}
-        key: "version"
-        value: ${{ steps.semantic-version.outputs.version_tag }}
-
+      shell: bash
+      run: |
+        cargo install toml-cli
+        toml set ${{ inputs.cargo-toml-path }} package.version \
+          ${{ steps.semantic-version.outputs.version }} \
+          > ${{ inputs.cargo-toml-path }}
     - name: Create release commit
       id: create-release-commit
       shell: bash
