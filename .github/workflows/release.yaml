@@ -41,4 +41,5 @@ jobs:
           major-pattern: "(MAJOR-AMPD)"
           minor-pattern: "(MINOR-AMPD)"
           tag-prefix: "ampd-v"
+          cargo-toml-path: "ampd/Cargo.toml"
 
