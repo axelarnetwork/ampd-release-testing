@@ -136,15 +136,18 @@ runs:
         fi
 
     - name: Edit cargo toml version
-      if:
-        inputs.dry-run == 'false' &&
-        steps.semantic-version.outputs.changed == 'true'
+      # if:
+      #   inputs.dry-run == 'false' &&
+      #   steps.semantic-version.outputs.changed == 'true'
       shell: bash
       run: |
         cargo install toml-cli
-        toml set ${{ inputs.cargo-toml-path }} package.version \
+        head -10 ${{ inputs.cargo-toml-path }}
+        toml set "${{ inputs.cargo-toml-path }}" package.version \
           ${{ steps.semantic-version.outputs.version }} \
           > ${{ inputs.cargo-toml-path }}
+        head -10 ${{ inputs.cargo-toml-path }}
+
     - name: Create release commit
       id: create-release-commit
       shell: bash
