@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - main2
       - releases/**
 
 name: Basic
@@ -72,7 +72,7 @@ jobs:
         with:
           command: install
           args: --debug --version 1.3.3 --locked cosmwasm-check
-    
+
       - name: Check wasm contracts
         run: cosmwasm-check ./target/wasm32-unknown-unknown/release/*.wasm
 
