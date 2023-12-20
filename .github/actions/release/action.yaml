@@ -145,8 +145,8 @@ runs:
         head -10 ${{ inputs.cargo-toml-path }}
         new_toml=$(toml set ./${{ inputs.cargo-toml-path }} package.version \
           ${{ steps.semantic-version.outputs.version }})
-        echo $new_toml
-        echo $new_toml > ${{ inputs.cargo-toml-path }}
+        echo "$new_toml"
+        echo "$new_toml" > ${{ inputs.cargo-toml-path }}
         head -10 ${{ inputs.cargo-toml-path }}
 
     - name: Create release commit
