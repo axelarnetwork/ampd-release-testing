@@ -1,64 +1,143 @@
+version = "ampd-v0.0.2"
+
 [package]
 edition = "2018"
 name = "ampd"
 version = "0.1.0"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-trait = "0.1.59"
-axelar-wasm-std = { workspace = true }
 base64 = "0.21.2"
-clap = { version = "4.2.7", features = ["derive", "cargo"] }
 config = "0.13.2"
-connection-router = { workspace = true }
 cosmos-sdk-proto = "0.16.0"
-cosmrs = { version = "0.14.0", features = ["cosmwasm"] }
-cosmwasm-std = { version = "1.2.1", features = ["stargate"] }
 deref-derive = "0.1.0"
 derive_builder = "0.12.0"
 dirs = "5.0.1"
-ecdsa = { version = "0.16.6" }
 enum-display-derive = "0.1.1"
-error-stack = { workspace = true }
-ethers = { version = "2.0.8", features = ["rustls"] }
-events = { workspace = true }
-events-derive = { workspace = true }
 futures = "0.3.25"
-hex = { version = "0.4.3", features = ["serde"] }
 humantime-serde = "1.1.1"
-itertools = { workspace = true }
-k256 = { version = "0.13.1", features = ["ecdsa"] }
 mockall = "0.11.3"
-move-core-types = { git = "https://github.com/mystenlabs/sui", tag = "mainnet-v1.9.1" }
-multisig = { workspace = true }
 prost = "0.11.9"
-report = { workspace = true }
-serde = { version = "1.0.147", features = ["derive"] }
 serde_json = "1.0.89"
 serde_with = "3.2.0"
-service-registry = { workspace = true }
-sui-json-rpc-types = { git = "https://github.com/mystenlabs/sui", tag = "mainnet-v1.9.1" }
-sui-types = { git = "https://github.com/mystenlabs/sui", features = ["test-utils"], tag = "mainnet-v1.9.1" }
-# Need to switch to our own fork of tendermint and tendermint-rpc due to event attribute value being nullable.
-# Can switch back once https://github.com/informalsystems/tendermint-rs/issues/1216 is resolved.
-# The fix for the issue is at https://github.com/axelarnetwork/tendermint-rs/commit/e97033e20e660a7e707ea86db174ec047bbba50d.
-tendermint = { git = "https://github.com/axelarnetwork/tendermint-rs.git", branch = "v0.33.x" }
-tendermint-rpc = { git = "https://github.com/axelarnetwork/tendermint-rs.git", branch = "v0.33.x", features = [
-  "http-client",
-] }
-thiserror = { workspace = true }
-tokio = { version = "1.22.0", features = ["signal"] }
-tokio-stream = { version = "0.1.11", features = ["sync"] }
 tokio-util = "0.7.8"
 toml = "0.5.9"
 tonic = "0.8.3"
-tracing = { version = "0.1.37", features = ["valuable", "log"] }
-tracing-core = { version = "0.1.30", features = ["valuable"] }
-tracing-subscriber = { version = "0.3.16", features = ["json", "valuable"] }
 url = "2.3.1"
-valuable = { version = "0.1.0", features = ["derive"] }
-valuable-serde = { version = "0.1.0", features = ["std"] }
-voting-verifier = { workspace = true }
+
+  [dependencies.axelar-wasm-std]
+  workspace = true
+
+  [dependencies.clap]
+  version = "4.2.7"
+  features = [ "derive", "cargo" ]
+
+  [dependencies.connection-router]
+  workspace = true
+
+  [dependencies.cosmrs]
+  version = "0.14.0"
+  features = [ "cosmwasm" ]
+
+  [dependencies.cosmwasm-std]
+  version = "1.2.1"
+  features = [ "stargate" ]
+
+  [dependencies.ecdsa]
+  version = "0.16.6"
+
+  [dependencies.error-stack]
+  workspace = true
+
+  [dependencies.ethers]
+  version = "2.0.8"
+  features = [ "rustls" ]
+
+  [dependencies.events]
+  workspace = true
+
+  [dependencies.events-derive]
+  workspace = true
+
+  [dependencies.hex]
+  version = "0.4.3"
+  features = [ "serde" ]
+
+  [dependencies.itertools]
+  workspace = true
+
+  [dependencies.k256]
+  version = "0.13.1"
+  features = [ "ecdsa" ]
+
+  [dependencies.move-core-types]
+  git = "https://github.com/mystenlabs/sui"
+  tag = "mainnet-v1.9.1"
+
+  [dependencies.multisig]
+  workspace = true
+
+  [dependencies.report]
+  workspace = true
+
+  [dependencies.serde]
+  version = "1.0.147"
+  features = [ "derive" ]
+
+  [dependencies.service-registry]
+  workspace = true
+
+  [dependencies.sui-json-rpc-types]
+  git = "https://github.com/mystenlabs/sui"
+  tag = "mainnet-v1.9.1"
+
+  [dependencies.sui-types]
+  git = "https://github.com/mystenlabs/sui"
+  features = [ "test-utils" ]
+  tag = "mainnet-v1.9.1"
+
+  [dependencies.tendermint]
+  git = "https://github.com/axelarnetwork/tendermint-rs.git"
+  branch = "v0.33.x"
+
+  [dependencies.tendermint-rpc]
+  git = "https://github.com/axelarnetwork/tendermint-rs.git"
+  branch = "v0.33.x"
+  features = [ "http-client" ]
+
+  [dependencies.thiserror]
+  workspace = true
+
+  [dependencies.tokio]
+  version = "1.22.0"
+  features = [ "signal" ]
+
+  [dependencies.tokio-stream]
+  version = "0.1.11"
+  features = [ "sync" ]
+
+  [dependencies.tracing]
+  version = "0.1.37"
+  features = [ "valuable", "log" ]
+
+  [dependencies.tracing-core]
+  version = "0.1.30"
+  features = [ "valuable" ]
+
+  [dependencies.tracing-subscriber]
+  version = "0.3.16"
+  features = [ "json", "valuable" ]
+
+  [dependencies.valuable]
+  version = "0.1.0"
+  features = [ "derive" ]
+
+  [dependencies.valuable-serde]
+  version = "0.1.0"
+  features = [ "std" ]
+
+  [dependencies.voting-verifier]
+  workspace = true
 
 [dev-dependencies]
 elliptic-curve = "0.13.5"
