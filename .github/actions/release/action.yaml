@@ -136,16 +136,15 @@ runs:
         fi
 
     - name: Edit cargo toml version
-      # if:
-      #   inputs.dry-run == 'false' &&
-      #   steps.semantic-version.outputs.changed == 'true'
+      if: steps.semantic-version.outputs.changed == 'true'
       shell: bash
       run: |
         cargo install toml-cli
-        head -10 ${{ inputs.cargo-toml-path }}
+        old_version=$(toml get ./${{ inputs.cargo-toml-path }} package.version)
+        new_verson=${{ steps.semantic-version.outputs.version }}
+        echo "Updating from version $old_version to $new_verson"
         new_toml=$(toml set ./${{ inputs.cargo-toml-path }} package.version \
           ${{ steps.semantic-version.outputs.version }})
-        echo "$new_toml"
         echo "$new_toml" > ${{ inputs.cargo-toml-path }}
         head -10 ${{ inputs.cargo-toml-path }}
 
