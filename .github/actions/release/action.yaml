@@ -126,7 +126,7 @@ runs:
       id: validate-branch
       shell: bash
       if:
-        steps.version.outputs.changed == 'true' &&
+        steps.semantic-version.outputs.changed == 'true' &&
         (steps.semantic-version.outputs.version_type == 'major' ||
         steps.semantic-version.outputs.version_type == 'minor')
       run: |
