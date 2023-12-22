@@ -133,6 +133,8 @@ runs:
         if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
           echo "Major and Minor releases are only allowed from main branch"
           exit 1
+        else
+          echo "Release from main branch. OK to proceed"
         fi
 
     - name: Edit cargo toml version
