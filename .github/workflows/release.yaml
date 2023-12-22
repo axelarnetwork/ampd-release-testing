@@ -45,8 +45,8 @@ jobs:
             echo "change-path=" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.inputs.binary-to-release }}" == "agggregate-verifier" ]; then
             echo "binary-to-release=aggregate-verifier" >> "$GITHUB_OUTPUT"
-            echo "major-pattern=MAJOR-AGGREGATE-VERIFIER" >> "$GITHUB_OUTPUT"
-            echo "minor-pattern=MINOR-AGGREGATE-VERIFIER" >> "$GITHUB_OUTPUT"
+            echo "major-pattern=/(MAJOR-AGGREGATE-VERIFIER)|(MAJOR-CONTRACTS)/" >> "$GITHUB_OUTPUT"
+            echo "minor-pattern=/(MINOR-AGGREGATE-VERIFIER)|(MINOR-CONTRACTS)/" >> "$GITHUB_OUTPUT"
             echo "tag-prefix=aggregate-verifier-v" >> "$GITHUB_OUTPUT"
             echo "cargo-toml-path=contracts/aggregate-verifier/Cargo.toml" >> "$GITHUB_OUTPUT"
             echo "change-path=contracts/aggregate-verifier packages" >> "$GITHUB_OUTPUT"
