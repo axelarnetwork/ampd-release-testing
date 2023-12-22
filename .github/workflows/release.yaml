@@ -25,9 +25,8 @@ on:
 
 jobs:
 
-  release-ampd:
-    name: Release Ampd
-    if: github.event.inputs.binary-to-release == 'ampd'
+  release:
+    name: Release ${{ github.event.inputs.binary-to-release }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
