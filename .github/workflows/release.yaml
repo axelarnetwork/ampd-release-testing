@@ -109,7 +109,7 @@ jobs:
             echo "change-path=contracts/service-registry packages" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.inputs.binary-to-release }}" == "voting-verifier" ]; then
             echo "binary-to-release=voting-verifier" >> "$GITHUB_OUTPUT"
-            echo "major-pattern=MAJOR-VOTING-VERIFIER" >> "$GITHUB_OUTPUT
+            echo "major-pattern=MAJOR-VOTING-VERIFIER" >> "$GITHUB_OUTPUT"
             echo "minor-pattern=MINOR-VOTING-VERIFIER" >> "$GITHUB_OUTPUT"
             echo "tag-prefix=voting-verifier-v" >> "$GITHUB_OUTPUT"
             echo "cargo-toml-path=contracts/voting-verifier/Cargo.toml" >> "$GITHUB_OUTPUT"
