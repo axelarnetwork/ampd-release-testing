@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "ampd"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "axelar-wasm-std",
@@ -1462,7 +1462,7 @@ dependencies = [
 
 [[package]]
 name = "connection-router"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axelar-wasm-std",
  "axelar-wasm-std-derive",

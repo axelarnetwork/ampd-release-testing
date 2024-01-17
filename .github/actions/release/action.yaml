@@ -141,14 +141,8 @@ runs:
       if: steps.semantic-version.outputs.changed == 'true'
       shell: bash
       run: |
-        cargo install toml-cli
-        old_version=$(toml get ./${{ inputs.cargo-toml-path }} package.version)
-        new_verson=${{ steps.semantic-version.outputs.version }}
-        echo "Updating from version $old_version to $new_verson"
-        new_toml=$(toml set ./${{ inputs.cargo-toml-path }} package.version \
-          ${{ steps.semantic-version.outputs.version }})
-        echo "$new_toml" > ${{ inputs.cargo-toml-path }}
-        head -10 ${{ inputs.cargo-toml-path }}
+        cargo install cargo-release
+        cargo release version -x --no-confirm -p ${{ inputs.binary-to-release }} ${{ steps.semantic-version.outputs.version_type }}
 
     - name: Create release commit
       id: create-release-commit
